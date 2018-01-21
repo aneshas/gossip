@@ -1,0 +1,8 @@
+*
+!Dockerfile
+!up
+!*.*
+!*/
+*.sw?
+.DS_Store
+.wercker/
