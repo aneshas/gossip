@@ -22,6 +22,7 @@ func NewAPI(store Store, admin, password string) *API {
 	)
 
 	api.RegisterEndpoint("POST", "/register_nick", api.registerNick)
+	api.RegisterEndpoint("POST", "/channel_members", api.channelMembers)
 
 	return &api
 }
@@ -57,7 +58,6 @@ func (cr *createChanReq) Validate() error {
 	return nil
 }
 
-// TODO - Should be accessible only by admin
 func (api *API) createChannel(c context.Context, w http.ResponseWriter, req *createChanReq) (*h.Response, error) {
 	ch := NewChannel(req.Name)
 	if err := api.store.Save(ch); err != nil {
@@ -119,4 +119,37 @@ func (api *API) registerNick(c context.Context, w http.ResponseWriter, req *regi
 	}
 
 	return h.NewResponse(registerNickResp{Secret: secret}, http.StatusOK), nil
+}
+
+type channelMembersReq struct {
+	Channel       string `json:"channel"`
+	ChannelSecret string `json:"channel_secret"`
+}
+
+func (r *channelMembersReq) Validate() error {
+	// TODO - validate: no spaces, alphanumeric, length etc... etc...
+	if r.Channel == "" {
+		return fmt.Errorf("channel is required")
+	}
+	if r.ChannelSecret == "" {
+		return fmt.Errorf("channel_secret is required")
+	}
+	return nil
+}
+
+func (api *API) channelMembers(c context.Context, w http.ResponseWriter, req *channelMembersReq) (*h.Response, error) {
+	ch, err := api.store.Get(req.Channel)
+	if err != nil {
+		return nil, fmt.Errorf("could not fetch channel")
+	}
+
+	members := []User{}
+
+	if ch.Members != nil && len(ch.Members) > 0 {
+		for _, u := range ch.Members {
+			members = append(members, u)
+		}
+	}
+
+	return h.NewResponse(members, http.StatusOK), nil
 }
