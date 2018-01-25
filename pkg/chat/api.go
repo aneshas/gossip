@@ -9,13 +9,19 @@ import (
 )
 
 // NewAPI creates new websocket api
-func NewAPI(store Store) *API {
+func NewAPI(store Store, admin, password string) *API {
 	api := API{
 		store: store,
 	}
 
-	api.RegisterEndpoint("POST", "/create_channel", api.createChannel)
-	api.RegisterEndpoint("POST", "/register_user", api.registerUser)
+	api.RegisterEndpoint(
+		"POST",
+		"/create_channel",
+		api.createChannel,
+		WithHTTPBasicAuth(admin, password),
+	)
+
+	api.RegisterEndpoint("POST", "/register_nick", api.registerNick)
 
 	return &api
 }
@@ -29,32 +35,35 @@ type API struct {
 // Store represents chat store interface
 type Store interface {
 	Save(*Chat) error
-	SaveUser(*User) error
+	Get(string) (*Chat, error)
 }
 
 // Prefix returns api prefix for this service
 func (api *API) Prefix() string { return "chat" }
 
-// apis:
-// - create_private
-
 type createChanReq struct {
 	Name string `json:"name"`
 }
 
+type createChanResp struct {
+	Secret string `json:"secret"`
+}
+
 func (cr *createChanReq) Validate() error {
 	if cr.Name == "" {
-		// TODO - validate: no spaces etc...
+		// TODO - validate: no spaces, alphanumeric, length etc... etc...
 		return fmt.Errorf("name must not be empty")
 	}
 	return nil
 }
 
-func (api *API) createChannel(c context.Context, w http.ResponseWriter, req *createChanReq) error {
-	if err := api.store.Save(NewChan(req.Name)); err != nil {
-		return fmt.Errorf("could not create channel at this moment")
+// TODO - Should be accessible only by admin
+func (api *API) createChannel(c context.Context, w http.ResponseWriter, req *createChanReq) (*h.Response, error) {
+	ch := NewChannel(req.Name)
+	if err := api.store.Save(ch); err != nil {
+		return nil, fmt.Errorf("could not create channel at this moment")
 	}
-	return nil
+	return h.NewResponse(createChanResp{Secret: ch.Secret}, http.StatusOK), nil
 }
 
 type registerNickReq struct {
@@ -69,21 +78,45 @@ type registerNickResp struct {
 	Secret string `json:"secret"`
 }
 
-func (r *registerUserReq) Validate() error {
+func (r *registerNickReq) Validate() error {
+	// TODO - validate: no spaces, alphanumeric, length etc... etc...
 	if r.Nick == "" {
 		return fmt.Errorf("nick is required")
+	}
+	if r.Channel == "" {
+		return fmt.Errorf("channel is required")
+	}
+	if r.ChannelSecret == "" {
+		return fmt.Errorf("channel_secret is required")
 	}
 	return nil
 }
 
-func (api *API) registerUser(c context.Context, w http.ResponseWriter, req *registerUserReq) error {
-	if err := api.store.SaveUser(
-		&User{
-			Nick: req.Nick,
-			Name: req.Name,
-		},
-	); err != nil {
-		return fmt.Errorf("could not create nick at this moment")
+func (api *API) registerNick(c context.Context, w http.ResponseWriter, req *registerNickReq) (*h.Response, error) {
+	ch, err := api.store.Get(req.Channel)
+	if err != nil {
+		return nil, fmt.Errorf("could not fetch channel")
 	}
-	return nil
+
+	if ch.Secret != req.ChannelSecret {
+		return nil, fmt.Errorf("invalid secret")
+	}
+
+	secret, err := ch.Register(&User{
+		Nick:     req.Nick,
+		FullName: req.FullName,
+		Email:    req.Email,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO - Need transaction
+	err = api.store.Save(ch)
+	if err != nil {
+		return nil, fmt.Errorf("could not update channel membership")
+	}
+
+	return h.NewResponse(registerNickResp{Secret: secret}, http.StatusOK), nil
 }

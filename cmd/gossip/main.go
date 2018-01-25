@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"os"
 
@@ -16,6 +17,13 @@ import (
 )
 
 func main() {
+	var (
+		admin = flag.String("admin", "admin", "chat administrator username (basic auth)")
+		pass  = flag.String("password", "admin", "chat administrator password (basic auth)")
+	)
+
+	flag.Parse()
+
 	store, err := redis.NewStore("localhost")
 	checkErr(err)
 
@@ -48,7 +56,7 @@ func main() {
 
 	srv.RegisterServices(
 		agent.NewAPI(broker.New(nats), store),
-		chat.NewAPI(store),
+		chat.NewAPI(store, *admin, *pass),
 	)
 
 	log.Fatal(srv.Run(8080))

@@ -64,12 +64,14 @@ func (api *API) connect(c context.Context, w http.ResponseWriter, r *http.Reques
 
 type initConReq struct {
 	Channel string `json:"channel"`
+	Nick    string `json:"nick"`
 	Secret  string `json:"secret"` // User secret
 }
 
 func (ir *initConReq) Validate() error {
-	if ir.ChannelID == "" || ir.Secret == "" {
-		return nil, fmt.Errorf("join fail: channel_id and secret are required")
+	// TODO - Validate lengthe alphanumeric etc...
+	if ir.Channel == "" || ir.Secret == "" || ir.Nick == "" {
+		return fmt.Errorf("join fail: channel_id, nick and secret are required")
 	}
 	return nil
 }

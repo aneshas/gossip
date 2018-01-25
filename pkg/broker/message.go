@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/gob"
 	"time"
-
-	"github.com/tonto/gossip/pkg/chat"
 )
 
 // Msg represents chat message
@@ -14,7 +12,7 @@ type Msg struct {
 	Time time.Time         `json:"time"`
 	Seq  uint64            `json:"seq"`
 	Text string            `json:"text"`
-	From chat.UserID       `json:"from"`
+	From string            `json:"from"`
 }
 
 // DecodeMsg tries to decode gob in b to Msg

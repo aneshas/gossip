@@ -3,6 +3,8 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -25,7 +27,7 @@ func New(broker *broker.Broker, store ChatStore) *Agent {
 // end to end comm client - broker
 type Agent struct {
 	chat          *chat.Chat
-	connectedUser chat.UserID
+	connectedUser string
 	conn          *websocket.Conn
 	broker        *broker.Broker
 	store         ChatStore
@@ -35,18 +37,36 @@ type Agent struct {
 
 // ChatStore represents chat store interface
 type ChatStore interface {
-	Get(chat.ID) (*chat.Chat, error)
-	GetUser(string) (*chat.User, error)
-	GetRecent(chat.ID) ([]broker.Msg, uint64, error)
+	Get(string) (*chat.Chat, error)
+	GetRecent(string, int64) ([]broker.Msg, uint64, error)
+}
+
+type msgT int
+
+const (
+	chatMsg msgT = iota
+	historyMsg
+	errorMsg
+	infoMsg
+	historyReqMsg
+)
+
+const (
+	maxHistoryCount uint64 = 3 // 150
+)
+
+type msg struct {
+	Type  msgT        `json:"type"`
+	Data  interface{} `json:"data,omitempty"`
+	Error string      `json:"error,omitempty"`
 }
 
 // HandleConn handles websocket communication for requested chat/client
-// TODO - Better lifecycle management in general
+// TODO - Better goroutine lifecycle management in general
 func (a *Agent) HandleConn(conn *websocket.Conn, req *initConReq) {
 	a.conn = conn
 
-	// TODO - Fetch chat from redis and join chat
-	ct, err := a.store.Get(req.ChatID)
+	ct, err := a.store.Get(req.Channel)
 	if err != nil {
 		a.writeFatal("agent: unable to find chat")
 		return
@@ -57,21 +77,14 @@ func (a *Agent) HandleConn(conn *websocket.Conn, req *initConReq) {
 		return
 	}
 
-	_, err = a.store.GetUser(string(req.ClientID))
+	user, err := ct.Join(req.Nick, req.Secret)
 	if err != nil {
-		a.writeFatal(fmt.Sprintf("agent: unable to join chat. nick not registered"))
+		a.writeFatal(err.Error())
 		return
 	}
 
 	a.chat = ct
-
-	err = a.chat.Join(req.ClientID)
-	if err != nil {
-		a.writeFatal(fmt.Sprintf("agent: unable to join chat: %v", err))
-		return
-	}
-
-	a.connectedUser = req.ClientID
+	a.connectedUser = user.Nick
 
 	mc := make(chan *broker.Msg)
 	{
@@ -79,9 +92,9 @@ func (a *Agent) HandleConn(conn *websocket.Conn, req *initConReq) {
 
 		if seq, err := a.pushRecent(); err != nil {
 			a.writeErr("agent: unable to fetch chat history. try reconnecting")
-			close, err = a.broker.SubscribeNew(req.ChatID, req.ClientID, mc)
+			close, err = a.broker.SubscribeNew(req.Channel, user.Nick, mc)
 		} else {
-			close, err = a.broker.Subscribe(req.ChatID, req.ClientID, seq, mc)
+			close, err = a.broker.Subscribe(req.Channel, user.Nick, seq, mc)
 		}
 
 		if err != nil {
@@ -96,7 +109,7 @@ func (a *Agent) HandleConn(conn *websocket.Conn, req *initConReq) {
 }
 
 func (a *Agent) pushRecent() (uint64, error) {
-	msgs, seq, err := a.store.GetRecent(a.chat.ID)
+	msgs, seq, err := a.store.GetRecent(a.chat.Name, 100)
 	if err != nil {
 		return 0, err
 	}
@@ -114,19 +127,18 @@ func (a *Agent) pushRecent() (uint64, error) {
 func (a *Agent) loop(mc chan *broker.Msg) {
 	go func() {
 		for {
-			m, err := a.fetchNext()
+			t, r, err := a.conn.NextReader()
 			if err != nil {
-				if err == errConnClosed {
-					return
-				}
 				a.writeErr(err.Error())
 				continue
 			}
 
-			err = a.broker.Send(a.chat.ID, m)
-			if err != nil {
-				a.writeErr(fmt.Sprintf("could not forward your message. try again: %v", err))
+			if t == websocket.CloseMessage {
+				a.done <- struct{}{}
+				return
 			}
+
+			a.handleClientMsg(r)
 		}
 	}()
 
@@ -148,27 +160,101 @@ func (a *Agent) loop(mc chan *broker.Msg) {
 	}()
 }
 
-func (a *Agent) fetchNext() (*broker.Msg, error) {
-	t, r, err := a.conn.NextReader()
-	if err != nil || t == websocket.CloseMessage {
-		a.done <- struct{}{}
-		return nil, errConnClosed
-	}
-
+func (a *Agent) handleClientMsg(r io.Reader) {
 	var message struct {
-		Type msgT       `json:"type"`
-		Data broker.Msg `json:"data,omitempty"`
+		Type msgT            `json:"type"`
+		Data json.RawMessage `json:"data,omitempty"`
 	}
 
-	err = json.NewDecoder(r).Decode(&message)
+	err := json.NewDecoder(r).Decode(&message)
 	if err != nil {
-		return nil, fmt.Errorf("could not decode message: %v", err)
+		a.writeErr(fmt.Sprintf("invalid message format: %v", err))
+		return
 	}
 
-	message.Data.From = a.connectedUser
-	message.Data.Time = time.Now()
+	switch message.Type {
+	case chatMsg:
+		a.handleChatMsg(message.Data)
+	case historyReqMsg:
+		a.handleHistoryReqMsg(message.Data)
+	}
+}
 
-	return &message.Data, nil
+func (a *Agent) handleChatMsg(raw json.RawMessage) {
+	var msg broker.Msg
+
+	err := json.Unmarshal(raw, &msg)
+	if err != nil {
+		a.writeErr(fmt.Sprintf("invalid text message format: %v", err))
+		return
+	}
+
+	msg.From = a.connectedUser
+	msg.Time = time.Now()
+
+	err = a.broker.Send(a.chat.Name, &msg)
+	if err != nil {
+		a.writeErr(fmt.Sprintf("could not forward your message. try again: %v", err))
+	}
+}
+
+func (a *Agent) handleHistoryReqMsg(raw json.RawMessage) {
+	var req struct {
+		To uint64 `json:"to"`
+	}
+
+	err := json.Unmarshal(raw, &req)
+	if err != nil {
+		a.writeErr(fmt.Sprintf("invalid history request message format: %v", err))
+		return
+	}
+
+	if req.To <= 0 {
+		return
+	}
+
+	msgs, err := a.buildHistoryBatch(req.To)
+	if err != nil {
+		a.writeErr("could not fetch chat history")
+		return
+	}
+
+	log.Println("go history msgs: ", msgs)
+
+	a.conn.WriteJSON(msg{
+		Type: historyMsg,
+		Data: msgs,
+	})
+}
+
+func (a *Agent) buildHistoryBatch(to uint64) ([]*broker.Msg, error) {
+	var offset uint64
+
+	// TODO - Are Seqs sequential per subject???
+	if to >= maxHistoryCount {
+		offset = to - maxHistoryCount
+	}
+
+	mc := make(chan *broker.Msg)
+
+	close, err := a.broker.Subscribe(a.chat.Name, "", offset, mc)
+	if err != nil {
+		return nil, err
+	}
+
+	defer close()
+
+	var msgs []*broker.Msg
+
+	for {
+		msg := <-mc
+		if msg.Seq >= to {
+			break
+		}
+		msgs = append(msgs, msg)
+	}
+
+	return msgs, nil
 }
 
 func (a *Agent) writeErr(err string) {
@@ -178,18 +264,4 @@ func (a *Agent) writeErr(err string) {
 func (a *Agent) writeFatal(err string) {
 	a.conn.WriteJSON(msg{Error: err, Type: errorMsg})
 	a.conn.Close()
-}
-
-type msgT int
-
-const (
-	chatMsg msgT = iota
-	historyMsg
-	errorMsg
-)
-
-type msg struct {
-	Type  msgT        `json:"type"`
-	Data  interface{} `json:"data,omitempty"`
-	Error string      `json:"error,omitempty"`
 }

@@ -10,6 +10,10 @@ import (
 	"github.com/tonto/gossip/pkg/chat"
 )
 
+const (
+	maxHistorySize int64 = 10
+)
+
 func NewStore(host string) (*Store, error) {
 	opts := redis.Options{
 		Addr: host + ":6379",
@@ -31,8 +35,8 @@ type Store struct {
 	client *redis.Client
 }
 
-func (s *Store) Get(id chat.ID) (*chat.Chat, error) {
-	val, err := s.client.Get(string(id)).Result()
+func (s *Store) Get(id string) (*chat.Chat, error) {
+	val, err := s.client.Get(id).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -47,8 +51,8 @@ func (s *Store) Get(id chat.ID) (*chat.Chat, error) {
 	return &ct, nil
 }
 
-func (s *Store) GetRecent(id chat.ID) ([]broker.Msg, uint64, error) {
-	cmd := s.client.LRange(fmt.Sprintf("%s_history", id), 0, 100)
+func (s *Store) GetRecent(id string, n int64) ([]broker.Msg, uint64, error) {
+	cmd := s.client.LRange(fmt.Sprintf("history.chat.%s", id), -n, -1)
 	if cmd.Err() != nil {
 		return nil, 0, cmd.Err()
 	}
@@ -75,18 +79,22 @@ func (s *Store) GetRecent(id chat.ID) ([]broker.Msg, uint64, error) {
 		}
 	}
 
-	return msgs, seq, nil
+	return msgs, (seq + 1), nil
 }
 
-func (s *Store) AppendMessage(id chat.ID, m *broker.Msg) error {
+func (s *Store) AppendMessage(id string, m *broker.Msg) error {
 	data, err := json.Marshal(m)
 	if err != nil {
 		data = []byte(`{"text":"message unavailable, unable to encode","from":"gossip/store"}`)
 	}
 
-	cmd := s.client.RPush(fmt.Sprintf("%s_history", id), data)
+	key := fmt.Sprintf("history.%s", id)
 
-	return cmd.Err()
+	if err := s.client.RPush(key, data).Err(); err != nil {
+		return err
+	}
+
+	return s.client.LTrim(key, -maxHistorySize, -1).Err()
 }
 
 func (s *Store) Save(ct *chat.Chat) error {
@@ -95,34 +103,7 @@ func (s *Store) Save(ct *chat.Chat) error {
 		return err
 	}
 
-	cmd := s.client.Set(string(ct.ID), data, 0)
+	cmd := s.client.Set(ct.Name, data, 0)
 
 	return cmd.Err()
-}
-
-func (s *Store) SaveUser(u *chat.User) error {
-	data, err := json.Marshal(u)
-	if err != nil {
-		return err
-	}
-
-	cmd := s.client.Set(string(u.Nick), data, 0)
-
-	return cmd.Err()
-}
-
-func (s *Store) GetUser(nick string) (*chat.User, error) {
-	val, err := s.client.Get(nick).Result()
-	if err != nil {
-		return nil, err
-	}
-
-	var u chat.User
-
-	err = json.Unmarshal([]byte(val), &u)
-	if err != nil {
-		return nil, fmt.Errorf("store: unable to unmarshal user. invalid format: %v", err)
-	}
-
-	return &u, nil
 }
