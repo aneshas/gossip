@@ -12,8 +12,6 @@ import (
 	"github.com/tonto/gossip/pkg/chat"
 )
 
-// TODO - Agent handles creation of private chats - adds members (leave privates last)
-
 // New creates new connection agent instance
 func New(broker *broker.Broker, store ChatStore) *Agent {
 	return &Agent{
@@ -33,6 +31,7 @@ type Agent struct {
 	store         ChatStore
 	done          chan struct{}
 	closeSub      func()
+	closed        bool
 }
 
 // ChatStore represents chat store interface
@@ -66,6 +65,12 @@ type msg struct {
 func (a *Agent) HandleConn(conn *websocket.Conn, req *initConReq) {
 	a.conn = conn
 
+	a.conn.SetCloseHandler(func(code int, text string) error {
+		a.closed = true
+		a.done <- struct{}{}
+		return nil
+	})
+
 	ct, err := a.store.Get(req.Channel)
 	if err != nil {
 		a.writeFatal("agent: unable to find chat")
@@ -90,11 +95,15 @@ func (a *Agent) HandleConn(conn *websocket.Conn, req *initConReq) {
 	{
 		var close func()
 
-		if seq, err := a.pushRecent(); err != nil {
-			a.writeErr("agent: unable to fetch chat history. try reconnecting")
-			close, err = a.broker.SubscribeNew(req.Channel, user.Nick, mc)
+		if req.LastSeq != nil {
+			close, err = a.broker.Subscribe(req.Channel, user.Nick, *req.LastSeq, mc)
 		} else {
-			close, err = a.broker.Subscribe(req.Channel, user.Nick, seq, mc)
+			if seq, err := a.pushRecent(); err != nil {
+				a.writeErr("agent: unable to fetch chat history. try reconnecting")
+				close, err = a.broker.SubscribeNew(req.Channel, user.Nick, mc)
+			} else {
+				close, err = a.broker.Subscribe(req.Channel, user.Nick, seq, mc)
+			}
 		}
 
 		if err != nil {
@@ -127,15 +136,14 @@ func (a *Agent) pushRecent() (uint64, error) {
 func (a *Agent) loop(mc chan *broker.Msg) {
 	go func() {
 		for {
-			t, r, err := a.conn.NextReader()
+			if a.closed {
+				return
+			}
+
+			_, r, err := a.conn.NextReader()
 			if err != nil {
 				a.writeErr(err.Error())
 				continue
-			}
-
-			if t == websocket.CloseMessage {
-				a.done <- struct{}{}
-				return
 			}
 
 			a.handleClientMsg(r)
@@ -143,8 +151,8 @@ func (a *Agent) loop(mc chan *broker.Msg) {
 	}()
 
 	go func() {
-		defer a.conn.Close()
 		defer a.closeSub()
+		defer a.conn.Close()
 		for {
 			select {
 			case m := <-mc:

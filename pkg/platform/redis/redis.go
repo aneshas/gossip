@@ -14,6 +14,12 @@ const (
 	maxHistorySize int64 = 10
 )
 
+const (
+	chanListKey   = "channel.list"
+	historyPrefix = "history"
+	chatPrefix    = "chat"
+)
+
 func NewStore(host string) (*Store, error) {
 	opts := redis.Options{
 		Addr: host + ":6379",
@@ -36,7 +42,7 @@ type Store struct {
 }
 
 func (s *Store) Get(id string) (*chat.Chat, error) {
-	val, err := s.client.Get(id).Result()
+	val, err := s.client.Get(chatID(id)).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +58,7 @@ func (s *Store) Get(id string) (*chat.Chat, error) {
 }
 
 func (s *Store) GetRecent(id string, n int64) ([]broker.Msg, uint64, error) {
-	cmd := s.client.LRange(fmt.Sprintf("history.chat.%s", id), -n, -1)
+	cmd := s.client.LRange(chatHistoryID(id), -n, -1)
 	if cmd.Err() != nil {
 		return nil, 0, cmd.Err()
 	}
@@ -88,7 +94,7 @@ func (s *Store) AppendMessage(id string, m *broker.Msg) error {
 		data = []byte(`{"text":"message unavailable, unable to encode","from":"gossip/store"}`)
 	}
 
-	key := fmt.Sprintf("history.%s", id)
+	key := chatHistoryID(id)
 
 	if err := s.client.RPush(key, data).Err(); err != nil {
 		return err
@@ -103,7 +109,37 @@ func (s *Store) Save(ct *chat.Chat) error {
 		return err
 	}
 
-	cmd := s.client.Set(ct.Name, data, 0)
+	cmd := s.client.Set(chatID(ct.Name), data, 0)
+	if err := cmd.Err(); err != nil {
+		return err
+	}
+
+	//  TODO - Transaction
+
+	// Save only public channels
+	if ct.Secret == "" {
+		cmd := s.client.SAdd(chanListKey, ct.Name)
+		if err := cmd.Err(); err != nil {
+			return err
+		}
+	}
 
 	return cmd.Err()
+}
+
+func (s *Store) ListChannels() ([]string, error) {
+	cmd := s.client.SMembers(chanListKey)
+	if err := cmd.Err(); err != nil {
+		return nil, err
+	}
+
+	return cmd.Result()
+}
+
+func chatID(id string) string {
+	return fmt.Sprintf("%s.%s", chatPrefix, id)
+}
+
+func chatHistoryID(id string) string {
+	return fmt.Sprintf("%s.%s.%s", historyPrefix, chatPrefix, id)
 }

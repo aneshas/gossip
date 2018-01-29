@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log"
 	"os"
@@ -30,17 +29,6 @@ func main() {
 	nats, err := stan.Connect("test-cluster", "test-client", stan.NatsURL(stan.DefaultNatsURL))
 	checkErr(err)
 
-	ig := ingest.New(
-		nats,
-		store,
-	)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	err = ig.Run(ctx)
-	checkErr(err)
-
 	logger := log.New(os.Stdout, "chat/ws => ", log.Ldate|log.Ltime|log.Lshortfile)
 
 	srv := http.NewServer(
@@ -55,7 +43,13 @@ func main() {
 	)
 
 	srv.RegisterServices(
-		agent.NewAPI(broker.New(nats), store),
+		agent.NewAPI(
+			broker.New(
+				nats,
+				ingest.New(nats, store),
+			),
+			store,
+		),
 		chat.NewAPI(store, *admin, *pass),
 	)
 

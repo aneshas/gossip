@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	h "github.com/tonto/kit/http"
+	"github.com/tonto/kit/http/respond"
 )
 
 // NewAPI creates new websocket api
@@ -16,11 +17,12 @@ func NewAPI(store Store, admin, password string) *API {
 
 	api.RegisterEndpoint(
 		"POST",
-		"/create_channel",
+		"/admin/create_channel",
 		api.createChannel,
 		WithHTTPBasicAuth(admin, password),
 	)
 
+	api.RegisterHandler("GET", "/list_channels", api.listChannels)
 	api.RegisterEndpoint("POST", "/register_nick", api.registerNick)
 	api.RegisterEndpoint("POST", "/channel_members", api.channelMembers)
 
@@ -37,13 +39,15 @@ type API struct {
 type Store interface {
 	Save(*Chat) error
 	Get(string) (*Chat, error)
+	ListChannels() ([]string, error)
 }
 
 // Prefix returns api prefix for this service
 func (api *API) Prefix() string { return "chat" }
 
 type createChanReq struct {
-	Name string `json:"name"`
+	Name    string `json:"name"`
+	Private bool   `json:"private"`
 }
 
 type createChanResp struct {
@@ -59,7 +63,7 @@ func (cr *createChanReq) Validate() error {
 }
 
 func (api *API) createChannel(c context.Context, w http.ResponseWriter, req *createChanReq) (*h.Response, error) {
-	ch := NewChannel(req.Name)
+	ch := NewChannel(req.Name, req.Private)
 	if err := api.store.Save(ch); err != nil {
 		return nil, fmt.Errorf("could not create channel at this moment")
 	}
@@ -71,7 +75,7 @@ type registerNickReq struct {
 	FullName      string `json:"name"`
 	Email         string `json:"email"`
 	Channel       string `json:"channel"`
-	ChannelSecret string `json:"channel_secret"`
+	ChannelSecret string `json:"channel_secret"` // Tennant
 }
 
 type registerNickResp struct {
@@ -85,9 +89,6 @@ func (r *registerNickReq) Validate() error {
 	}
 	if r.Channel == "" {
 		return fmt.Errorf("channel is required")
-	}
-	if r.ChannelSecret == "" {
-		return fmt.Errorf("channel_secret is required")
 	}
 	return nil
 }
@@ -152,4 +153,19 @@ func (api *API) channelMembers(c context.Context, w http.ResponseWriter, req *ch
 	}
 
 	return h.NewResponse(members, http.StatusOK), nil
+}
+
+func (api *API) listChannels(c context.Context, w http.ResponseWriter, r *http.Request) {
+	chans, err := api.store.ListChannels()
+	if err != nil {
+		respond.WithJSON(
+			w, r,
+			h.NewError(http.StatusInternalServerError, err),
+		)
+		return
+	}
+	respond.WithJSON(
+		w, r,
+		chans,
+	)
 }

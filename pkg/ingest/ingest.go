@@ -3,7 +3,6 @@
 package ingest
 
 import (
-	"context"
 	"fmt"
 	"log"
 
@@ -15,8 +14,6 @@ func New(nats stan.Conn, store ChatStore) *Ingest {
 	return &Ingest{
 		nats:  nats,
 		store: store,
-		subc:  make(chan string), // TODO - Buffered?
-		subs:  make(map[string]stan.Subscription),
 	}
 }
 
@@ -24,8 +21,6 @@ func New(nats stan.Conn, store ChatStore) *Ingest {
 type Ingest struct {
 	nats  stan.Conn
 	store ChatStore
-	subc  chan string
-	subs  map[string]stan.Subscription
 }
 
 // ChatStore represents chat store interface
@@ -33,11 +28,10 @@ type ChatStore interface {
 	AppendMessage(string, *broker.Msg) error
 }
 
-// Run runs the ingestor
-// Make sure to cancel the context when done
-func (i *Ingest) Run(c context.Context) error {
-	_, err := i.nats.QueueSubscribe(
-		"chat.general",
+// RunIngest subscribes to ingest queue group and updates chat read model
+func (i *Ingest) RunIngest(id string) (func(), error) {
+	sub, err := i.nats.QueueSubscribe(
+		"chat."+id,
 		"ingest",
 		func(m *stan.Msg) {
 			msg, err := broker.DecodeMsg(m.Data)
@@ -48,13 +42,13 @@ func (i *Ingest) Run(c context.Context) error {
 
 			msg.Seq = m.Sequence
 
-			i.store.AppendMessage(m.Subject, msg)
+			i.store.AppendMessage(id, msg)
 		},
 	)
 
 	if err != nil {
-		return fmt.Errorf("ingest: could not subscribe: %v", err)
+		return nil, fmt.Errorf("ingest: could not subscribe: %v", err)
 	}
 
-	return nil
+	return func() { sub.Close() }, nil
 }

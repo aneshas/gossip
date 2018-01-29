@@ -7,12 +7,17 @@ import (
 )
 
 // NewChannel creates new channel chat
-func NewChannel(name string) *Chat {
-	return &Chat{
+func NewChannel(name string, private bool) *Chat {
+	ch := Chat{
 		Name:    name,
-		Secret:  newSecret(),
 		Members: make(map[string]User),
 	}
+
+	if private {
+		ch.Secret = newSecret()
+	}
+
+	return &ch
 }
 
 // Chat represents private or channel chat

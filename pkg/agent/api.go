@@ -63,14 +63,15 @@ func (api *API) connect(c context.Context, w http.ResponseWriter, r *http.Reques
 }
 
 type initConReq struct {
-	Channel string `json:"channel"`
-	Nick    string `json:"nick"`
-	Secret  string `json:"secret"` // User secret
+	Channel string  `json:"channel"`
+	Nick    string  `json:"nick"`
+	Secret  string  `json:"secret"` // User secret
+	LastSeq *uint64 `json:"last_seq"`
 }
 
 func (ir *initConReq) Validate() error {
 	// TODO - Validate lengthe alphanumeric etc...
-	if ir.Channel == "" || ir.Secret == "" || ir.Nick == "" {
+	if ir.Channel == "" || ir.Nick == "" {
 		return fmt.Errorf("join fail: channel_id, nick and secret are required")
 	}
 	return nil
@@ -79,6 +80,8 @@ func (ir *initConReq) Validate() error {
 var errConnClosed = errors.New("connection closed")
 
 func (api *API) waitConnInit(conn *websocket.Conn) (*initConReq, error) {
+	// TODO - Add join timeout
+
 	t, wsr, err := conn.NextReader()
 	if err != nil || t == websocket.CloseMessage {
 		return nil, errConnClosed

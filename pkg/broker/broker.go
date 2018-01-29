@@ -2,6 +2,7 @@
 package broker
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -9,15 +10,22 @@ import (
 )
 
 // New creates new chat broker instance
-func New(conn stan.Conn) *Broker {
+func New(conn stan.Conn, ig Ingester) *Broker {
 	return &Broker{
 		nats: conn,
+		ig:   ig,
 	}
 }
 
 // Broker represents chat broker
 type Broker struct {
 	nats stan.Conn
+	ig   Ingester
+}
+
+// Ingester represents chat history read model ingester
+type Ingester interface {
+	RunIngest(string) (func(), error)
 }
 
 // Subscribe subscribes to provided chat id at start sequence
@@ -40,7 +48,13 @@ func (b *Broker) Subscribe(id string, nick string, start uint64, c chan *Msg) (f
 		return nil, err
 	}
 
-	return func() { sub.Close() }, nil
+	close, err := b.ig.RunIngest(id)
+	if err != nil {
+		sub.Close()
+		return nil, fmt.Errorf("broker: unable to run ingest for chat. try again")
+	}
+
+	return func() { sub.Close(); close() }, nil
 }
 
 // SubscribeNew subscribes to provided chat id subject starting from time.Now()
@@ -63,7 +77,13 @@ func (b *Broker) SubscribeNew(id string, nick string, c chan *Msg) (func(), erro
 		return nil, err
 	}
 
-	return func() { sub.Close() }, nil
+	close, err := b.ig.RunIngest(id)
+	if err != nil {
+		sub.Close()
+		return nil, fmt.Errorf("broker: unable to run ingest for chat. try again")
+	}
+
+	return func() { sub.Close(); close() }, nil
 }
 
 // Send sends new message to a given chat
