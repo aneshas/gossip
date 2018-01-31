@@ -1,0 +1,42 @@
+version: '3'
+
+# TODO 
+# - at least 3 replicas
+# - push to docker hub via wercker and use here
+
+services:
+  gossip:
+    build: cmd/gossip
+    ports:
+      - "80:8080"
+    depends_on:
+      - redis
+      - nats_stream
+    links:
+      - nats_stream
+      - redis
+    restart: always 
+    entrypoint:
+      - /gossip
+  nats_stream:
+    image: nats-streaming
+    restart: always 
+    ports:
+      - "8222:8222"
+    volumes:
+      - ./nats-data:/data
+    entrypoint:
+      - /nats-streaming-server 
+      - -m 
+      - '8222'
+      - -store 
+      - file 
+      - -dir 
+      - data 
+  redis:
+    image: redis:4.0.5-alpine 
+    restart: always 
+    command: ["redis-server", "--appendonly", "yes"]
+    working_dir: /db
+    volumes:
+      - ./redis-data:/db

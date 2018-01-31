@@ -197,6 +197,16 @@ func (a *Agent) handleChatMsg(raw json.RawMessage) {
 		return
 	}
 
+	if msg.Text == "" {
+		a.writeErr("sent empty message")
+		return
+	}
+
+	if len(msg.Text) > 1024 {
+		a.writeErr("exceeded max message length of 1024 characters")
+		return
+	}
+
 	msg.From = a.connectedUser
 	msg.Time = time.Now()
 

@@ -19,14 +19,20 @@ func main() {
 	var (
 		admin = flag.String("admin", "admin", "chat administrator username (basic auth)")
 		pass  = flag.String("password", "admin", "chat administrator password (basic auth)")
+
+		clusterID = flag.String("nats-cluster-id", "test-cluster", "nats streaming cluster id")
+		clientID  = flag.String("nats-client-id", "test-client", "nats streaming client id")
+		natsURL   = flag.String("nats-url", "nats://nats_stream:4222", "nats streaming url")
+
+		redisHost = flag.String("redis-host", "redis", "redis host url")
 	)
 
 	flag.Parse()
 
-	store, err := redis.NewStore("localhost")
+	store, err := redis.NewStore(*redisHost)
 	checkErr(err)
 
-	nats, err := stan.Connect("test-cluster", "test-client", stan.NatsURL(stan.DefaultNatsURL))
+	nats, err := stan.Connect(*clusterID, *clientID, stan.NatsURL(*natsURL))
 	checkErr(err)
 
 	logger := log.New(os.Stdout, "chat/ws => ", log.Ldate|log.Ltime|log.Lshortfile)

@@ -132,9 +132,6 @@ func (r *channelMembersReq) Validate() error {
 	if r.Channel == "" {
 		return fmt.Errorf("channel is required")
 	}
-	if r.ChannelSecret == "" {
-		return fmt.Errorf("channel_secret is required")
-	}
 	return nil
 }
 
