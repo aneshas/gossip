@@ -3,6 +3,7 @@ package broker
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"time"
 
@@ -25,7 +26,13 @@ type Broker struct {
 
 // Ingester represents chat history read model ingester
 type Ingester interface {
-	RunIngest(string) (func(), error)
+	Run(string) (func(), error)
+}
+
+// MQ represents message broker interface
+type MQ interface {
+	SubscribeSeq(string, string, uint64, func(uint64, []byte)) (io.Closer, error)
+	SubscribeTimestamp(string, string, time.Time, func(uint64, []byte)) (io.Closer, error)
 }
 
 // Subscribe subscribes to provided chat id at start sequence
@@ -48,7 +55,7 @@ func (b *Broker) Subscribe(id string, nick string, start uint64, c chan *Msg) (f
 		return nil, err
 	}
 
-	close, err := b.ig.RunIngest(id)
+	close, err := b.ig.Run(id)
 	if err != nil {
 		sub.Close()
 		return nil, fmt.Errorf("broker: unable to run ingest for chat. try again")
@@ -77,7 +84,7 @@ func (b *Broker) SubscribeNew(id string, nick string, c chan *Msg) (func(), erro
 		return nil, err
 	}
 
-	close, err := b.ig.RunIngest(id)
+	close, err := b.ig.Run(id)
 	if err != nil {
 		sub.Close()
 		return nil, fmt.Errorf("broker: unable to run ingest for chat. try again")

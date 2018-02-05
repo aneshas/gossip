@@ -11,22 +11,22 @@ import (
 )
 
 // New creates new ingest instance
-func New(q IngesterQueue, s ChatStore) *Ingest {
+func New(mq MQ, s ChatStore) *Ingest {
 	return &Ingest{
-		queue: q,
+		mq:    mq,
 		store: s,
 	}
 }
 
 // Ingest represents chat ingester
 type Ingest struct {
-	queue IngesterQueue
+	mq    MQ
 	store ChatStore
 }
 
-// IngesterQueue represents ingest queue broker interface
-type IngesterQueue interface {
-	Subscribe(string, func(uint64, []byte)) (io.Closer, error)
+// MQ represents ingest message queue interface
+type MQ interface {
+	SubscribeQueue(string, func(uint64, []byte)) (io.Closer, error)
 }
 
 // ChatStore represents chat store interface
@@ -36,7 +36,7 @@ type ChatStore interface {
 
 // Run subscribes to ingest queue group and updates chat read model
 func (i *Ingest) Run(id string) (func(), error) {
-	closer, err := i.queue.Subscribe(
+	closer, err := i.mq.SubscribeQueue(
 		"chat."+id,
 		func(seq uint64, data []byte) {
 			msg, err := broker.DecodeMsg(data)
@@ -61,20 +61,4 @@ func (i *Ingest) Run(id string) (func(), error) {
 	}
 
 	return func() { closer.Close() }, nil
-
-	// sub, err := i.nats.QueueSubscribe(
-	// 	"chat."+id,
-	// 	"ingest",
-	// 	func(m *stan.Msg) {
-	// 		msg, err := broker.DecodeMsg(m.Data)
-	// 		if err != nil {
-	// 			log.Printf("ingest: error decoding message: %v", err)
-	// 			return
-	// 		}
-
-	// 		msg.Seq = m.Sequence
-
-	// 		i.store.AppendMessage(id, msg)
-	// 	},
-	// )
 }

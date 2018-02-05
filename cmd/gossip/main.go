@@ -10,6 +10,7 @@ import (
 	"github.com/tonto/gossip/pkg/broker"
 	"github.com/tonto/gossip/pkg/chat"
 	"github.com/tonto/gossip/pkg/ingest"
+	"github.com/tonto/gossip/pkg/platform/nats"
 	"github.com/tonto/gossip/pkg/platform/redis"
 	"github.com/tonto/kit/http"
 	"github.com/tonto/kit/http/adapter"
@@ -32,7 +33,7 @@ func main() {
 	store, err := redis.NewStore(*redisHost)
 	checkErr(err)
 
-	nats, err := stan.Connect(*clusterID, *clientID, stan.NatsURL(*natsURL))
+	nt, err := stan.Connect(*clusterID, *clientID, stan.NatsURL(*natsURL))
 	checkErr(err)
 
 	logger := log.New(os.Stdout, "chat/ws => ", log.Ldate|log.Ltime|log.Lshortfile)
@@ -51,8 +52,11 @@ func main() {
 	srv.RegisterServices(
 		agent.NewAPI(
 			broker.New(
-				nats,
-				ingest.New(nats, store),
+				nt,
+				ingest.New(
+					nats.New(nt),
+					store,
+				),
 			),
 			store,
 		),

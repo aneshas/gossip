@@ -196,7 +196,7 @@ type queue struct {
 	err    bool
 }
 
-func (q *queue) Subscribe(id string, f func(uint64, []byte)) (io.Closer, error) {
+func (q *queue) SubscribeQueue(id string, f func(uint64, []byte)) (io.Closer, error) {
 	if q.err {
 		return nil, fmt.Errorf("error")
 	}

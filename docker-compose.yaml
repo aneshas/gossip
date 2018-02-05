@@ -1,7 +1,6 @@
 version: '3'
 
 # TODO 
-# - at least 3 replicas
 # - push to docker hub via wercker and use here
 
 services:
@@ -18,6 +17,10 @@ services:
     restart: always 
     entrypoint:
       - /gossip
+      - -admin
+      - admin
+      - -password
+      - admin
   nats_stream:
     image: nats-streaming
     restart: always 
