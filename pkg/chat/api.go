@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 
 	h "github.com/tonto/kit/http"
 	"github.com/tonto/kit/http/respond"
@@ -56,8 +57,13 @@ type createChanResp struct {
 
 func (cr *createChanReq) Validate() error {
 	if cr.Name == "" {
-		// TODO - validate: no spaces, alphanumeric, length etc... etc...
 		return fmt.Errorf("name must not be empty")
+	}
+	if len(cr.Name) < 3 || len(cr.Name) > 10 {
+		return fmt.Errorf("name must be between 3 and 10 characters long")
+	}
+	if match, err := regexp.Match("^[a-zA-Z0-9_]*$", []byte(cr.Name)); !match || err != nil {
+		return fmt.Errorf("name must only contain alphanumeric and underscores")
 	}
 	return nil
 }
@@ -83,12 +89,22 @@ type registerNickResp struct {
 }
 
 func (r *registerNickReq) Validate() error {
-	// TODO - validate: no spaces, alphanumeric, length etc... etc...
 	if r.Nick == "" {
 		return fmt.Errorf("nick is required")
 	}
 	if r.Channel == "" {
 		return fmt.Errorf("channel is required")
+	}
+	if len(r.Nick) < 3 || len(r.Nick) > 10 {
+		return fmt.Errorf("nick must be between 3 and 10 characters long")
+	}
+	if match, err := regexp.Match("^[a-zA-Z0-9_]*$", []byte(r.Nick)); !match || err != nil {
+		return fmt.Errorf("nick must only contain alphanumeric and underscores")
+	}
+	if len(r.FullName) > 20 ||
+		len(r.Email) > 20 ||
+		len(r.ChannelSecret) > 20 {
+		return fmt.Errorf("exceeded max field length of 20")
 	}
 	return nil
 }
@@ -128,9 +144,14 @@ type channelMembersReq struct {
 }
 
 func (r *channelMembersReq) Validate() error {
-	// TODO - validate: no spaces, alphanumeric, length etc... etc...
 	if r.Channel == "" {
 		return fmt.Errorf("channel is required")
+	}
+	if len(r.Channel) > 10 {
+		return fmt.Errorf("channel name must not exceed 10 characters")
+	}
+	if len(r.ChannelSecret) > 20 {
+		return fmt.Errorf("channel_secret must not exceed 20 characters")
 	}
 	return nil
 }

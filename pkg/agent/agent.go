@@ -73,18 +73,18 @@ func (a *Agent) HandleConn(conn *websocket.Conn, req *initConReq) {
 
 	ct, err := a.store.Get(req.Channel)
 	if err != nil {
-		a.writeFatal("agent: unable to find chat")
+		writeFatal(a.conn, "agent: unable to find chat")
 		return
 	}
 
 	if ct == nil {
-		a.writeFatal("agent: this chat does not exist")
+		writeFatal(a.conn, "agent: this chat does not exist")
 		return
 	}
 
 	user, err := ct.Join(req.Nick, req.Secret)
 	if err != nil {
-		a.writeFatal(err.Error())
+		writeFatal(a.conn, err.Error())
 		return
 	}
 
@@ -99,7 +99,7 @@ func (a *Agent) HandleConn(conn *websocket.Conn, req *initConReq) {
 			close, err = a.broker.Subscribe(req.Channel, user.Nick, *req.LastSeq, mc)
 		} else {
 			if seq, err := a.pushRecent(); err != nil {
-				a.writeErr("agent: unable to fetch chat history. try reconnecting")
+				writeErr(a.conn, "agent: unable to fetch chat history. try reconnecting")
 				close, err = a.broker.SubscribeNew(req.Channel, user.Nick, mc)
 			} else {
 				close, err = a.broker.Subscribe(req.Channel, user.Nick, seq, mc)
@@ -107,7 +107,7 @@ func (a *Agent) HandleConn(conn *websocket.Conn, req *initConReq) {
 		}
 
 		if err != nil {
-			a.writeFatal("agent: unable to subscribe to chat updates. closing connection")
+			writeFatal(a.conn, "agent: unable to subscribe to chat updates. closing connection")
 			return
 		}
 
@@ -142,7 +142,7 @@ func (a *Agent) loop(mc chan *broker.Msg) {
 
 			_, r, err := a.conn.NextReader()
 			if err != nil {
-				a.writeErr(err.Error())
+				writeErr(a.conn, err.Error())
 				continue
 			}
 
@@ -176,7 +176,7 @@ func (a *Agent) handleClientMsg(r io.Reader) {
 
 	err := json.NewDecoder(r).Decode(&message)
 	if err != nil {
-		a.writeErr(fmt.Sprintf("invalid message format: %v", err))
+		writeErr(a.conn, fmt.Sprintf("invalid message format: %v", err))
 		return
 	}
 
@@ -193,17 +193,17 @@ func (a *Agent) handleChatMsg(raw json.RawMessage) {
 
 	err := json.Unmarshal(raw, &msg)
 	if err != nil {
-		a.writeErr(fmt.Sprintf("invalid text message format: %v", err))
+		writeErr(a.conn, fmt.Sprintf("invalid text message format: %v", err))
 		return
 	}
 
 	if msg.Text == "" {
-		a.writeErr("sent empty message")
+		writeErr(a.conn, "sent empty message")
 		return
 	}
 
 	if len(msg.Text) > 1024 {
-		a.writeErr("exceeded max message length of 1024 characters")
+		writeErr(a.conn, "exceeded max message length of 1024 characters")
 		return
 	}
 
@@ -212,7 +212,7 @@ func (a *Agent) handleChatMsg(raw json.RawMessage) {
 
 	err = a.broker.Send(a.chat.Name, &msg)
 	if err != nil {
-		a.writeErr(fmt.Sprintf("could not forward your message. try again: %v", err))
+		writeErr(a.conn, fmt.Sprintf("could not forward your message. try again: %v", err))
 	}
 }
 
@@ -223,7 +223,7 @@ func (a *Agent) handleHistoryReqMsg(raw json.RawMessage) {
 
 	err := json.Unmarshal(raw, &req)
 	if err != nil {
-		a.writeErr(fmt.Sprintf("invalid history request message format: %v", err))
+		writeErr(a.conn, fmt.Sprintf("invalid history request message format: %v", err))
 		return
 	}
 
@@ -233,7 +233,7 @@ func (a *Agent) handleHistoryReqMsg(raw json.RawMessage) {
 
 	msgs, err := a.buildHistoryBatch(req.To)
 	if err != nil {
-		a.writeErr("could not fetch chat history")
+		writeErr(a.conn, "could not fetch chat history")
 		return
 	}
 
@@ -275,11 +275,11 @@ func (a *Agent) buildHistoryBatch(to uint64) ([]*broker.Msg, error) {
 	return msgs, nil
 }
 
-func (a *Agent) writeErr(err string) {
-	a.conn.WriteJSON(msg{Error: err, Type: errorMsg})
+func writeErr(conn *websocket.Conn, err string) {
+	conn.WriteJSON(msg{Error: err, Type: errorMsg})
 }
 
-func (a *Agent) writeFatal(err string) {
-	a.conn.WriteJSON(msg{Error: err, Type: errorMsg})
-	a.conn.Close()
+func writeFatal(conn *websocket.Conn, err string) {
+	conn.WriteJSON(msg{Error: err, Type: errorMsg})
+	conn.Close()
 }

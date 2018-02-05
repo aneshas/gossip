@@ -4,23 +4,29 @@ package ingest
 
 import (
 	"fmt"
-	"log"
+	"io"
+	"time"
 
-	"github.com/nats-io/go-nats-streaming"
 	"github.com/tonto/gossip/pkg/broker"
 )
 
-func New(nats stan.Conn, store ChatStore) *Ingest {
+// New creates new ingest instance
+func New(q IngesterQueue, s ChatStore) *Ingest {
 	return &Ingest{
-		nats:  nats,
-		store: store,
+		queue: q,
+		store: s,
 	}
 }
 
 // Ingest represents chat ingester
 type Ingest struct {
-	nats  stan.Conn
+	queue IngesterQueue
 	store ChatStore
+}
+
+// IngesterQueue represents ingest queue broker interface
+type IngesterQueue interface {
+	Subscribe(string, func(uint64, []byte)) (io.Closer, error)
 }
 
 // ChatStore represents chat store interface
@@ -28,20 +34,24 @@ type ChatStore interface {
 	AppendMessage(string, *broker.Msg) error
 }
 
-// RunIngest subscribes to ingest queue group and updates chat read model
-func (i *Ingest) RunIngest(id string) (func(), error) {
-	sub, err := i.nats.QueueSubscribe(
+// Run subscribes to ingest queue group and updates chat read model
+func (i *Ingest) Run(id string) (func(), error) {
+	closer, err := i.queue.Subscribe(
 		"chat."+id,
-		"ingest",
-		func(m *stan.Msg) {
-			msg, err := broker.DecodeMsg(m.Data)
+		func(seq uint64, data []byte) {
+			msg, err := broker.DecodeMsg(data)
 			if err != nil {
-				log.Printf("ingest: error decoding message: %v", err)
-				return
+				msg = &broker.Msg{
+					From: "ingest",
+					Text: "ingest: message unavailable: decoding error",
+					Time: time.Now(),
+				}
 			}
 
-			msg.Seq = m.Sequence
+			msg.Seq = seq
 
+			// TODO - If AppendMessage or decode errors out, don't ack
+			// Ack only after persisting to store (since you are the only one that got the msg (queue subscription))
 			i.store.AppendMessage(id, msg)
 		},
 	)
@@ -50,5 +60,21 @@ func (i *Ingest) RunIngest(id string) (func(), error) {
 		return nil, fmt.Errorf("ingest: could not subscribe: %v", err)
 	}
 
-	return func() { sub.Close() }, nil
+	return func() { closer.Close() }, nil
+
+	// sub, err := i.nats.QueueSubscribe(
+	// 	"chat."+id,
+	// 	"ingest",
+	// 	func(m *stan.Msg) {
+	// 		msg, err := broker.DecodeMsg(m.Data)
+	// 		if err != nil {
+	// 			log.Printf("ingest: error decoding message: %v", err)
+	// 			return
+	// 		}
+
+	// 		msg.Seq = m.Sequence
+
+	// 		i.store.AppendMessage(id, msg)
+	// 	},
+	// )
 }

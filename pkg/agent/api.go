@@ -54,7 +54,7 @@ func (api *API) connect(c context.Context, w http.ResponseWriter, r *http.Reques
 		if err == errConnClosed {
 			return
 		}
-		conn.WriteJSON(msg{Error: err.Error()})
+		writeErr(conn, err.Error())
 		return
 	}
 

@@ -1,65 +1,231 @@
 package chat_test
 
-// import (
-// 	"testing"
+import (
+	"reflect"
+	"sort"
+	"strconv"
+	"testing"
 
-// 	"github.com/tonto/gossip/pkg/chat"
-// )
+	"github.com/tonto/gossip/pkg/chat"
+)
 
-// func TestJoin(t *testing.T) {
-// 	cases := []struct {
-// 		name     string
-// 		chat     *chat.Chat
-// 		memberID chat.UserID
-// 		wantErr  bool
-// 	}{
-// 		{
-// 			name: "test join pvt",
-// 			chat: &chat.Chat{
-// 				Type:    chat.PvtChat,
-// 				Members: []chat.UserID{"fooID", "barID"},
-// 			},
-// 			memberID: "fooID",
-// 			wantErr:  false,
-// 		},
-// 		{
-// 			name: "test join pvt wrong",
-// 			chat: &chat.Chat{
-// 				Type:    chat.PvtChat,
-// 				Members: []chat.UserID{"fooID", "barID"},
-// 			},
-// 			memberID: "bazID",
-// 			wantErr:  true,
-// 		},
-// 		{
-// 			name: "test join chan",
-// 			chat: &chat.Chat{
-// 				Type: chat.ChanChat,
-// 			},
-// 			memberID: "fooID",
-// 			wantErr:  false,
-// 		},
-// 		{
-// 			name: "test join chan ban",
-// 			chat: &chat.Chat{
-// 				Type:    chat.ChanChat,
-// 				BanList: []chat.UserID{"bazID", "fooID"},
-// 			},
-// 			memberID: "fooID",
-// 			wantErr:  true,
-// 		},
-// 	}
+func TestChannelRegister(t *testing.T) {
+	cases := []struct {
+		name    string
+		channel string
+		private bool
+		users   []chat.User
+		wantErr bool
+	}{
+		{
+			name:    "test join single user public chan",
+			channel: "general",
+			private: false,
+			users: []chat.User{
+				{
+					Nick:     "foo",
+					FullName: "0",
+					Email:    "john@email.com",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "test join single user private chan",
+			channel: "general",
+			private: true,
+			users: []chat.User{
+				{
+					Nick:     "foo",
+					FullName: "0",
+					Email:    "john@email.com",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "test join multiple users private chan",
+			channel: "general",
+			private: true,
+			users: []chat.User{
+				{
+					Nick:     "foo",
+					FullName: "0",
+					Email:    "john@email.com",
+				},
+				{
+					Nick:     "bar",
+					FullName: "1",
+					Email:    "john@email.com",
+				},
+				{
+					Nick:     "baz",
+					FullName: "2",
+					Email:    "john@email.com",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "test join multiple users nick exists err",
+			channel: "general",
+			private: true,
+			users: []chat.User{
+				{
+					Nick:     "foo",
+					FullName: "0",
+					Email:    "john@email.com",
+				},
+				{
+					Nick:     "bar",
+					FullName: "1",
+					Email:    "john@email.com",
+				},
+				{
+					Nick:     "foo",
+					FullName: "2",
+					Email:    "john@email.com",
+				},
+			},
+			wantErr: true,
+		},
+	}
 
-// 	for _, tc := range cases {
-// 		t.Run(tc.name, func(t *testing.T) {
-// 			err := tc.chat.Join(tc.memberID)
-// 			if (err != nil) != tc.wantErr {
-// 				t.Errorf("error = %v, wantErr %v", err, tc.wantErr)
-// 				return
-// 			}
-// 			// if !reflect.DeepEqual(tc.chat.Members, tc.want) {
-// 			// 	t.Errorf("Members = %v, want %v", tc.chat.Members, tc.want)
-// 			// }
-// 		})
-// 	}
-// }
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ch := chat.NewChannel("general", tc.private)
+
+			var e error
+
+			for i := range tc.users {
+				secret, err := ch.Register(&tc.users[i])
+				if err != nil {
+					e = err
+					continue
+				}
+
+				if tc.private && secret == "" {
+					t.Errorf("secret should not be empty for private channels")
+				}
+			}
+
+			if (e != nil) != tc.wantErr {
+				t.Fatalf("error = %v, wantErr %v", e, tc.wantErr)
+				return
+			}
+
+			if tc.wantErr {
+				return
+			}
+
+			users := []chat.User{}
+
+			for _, m := range ch.Members {
+				users = append(users, m)
+			}
+
+			sort.Slice(users, func(i, j int) bool {
+				ii, _ := strconv.Atoi(users[i].FullName)
+				ji, _ := strconv.Atoi(users[j].FullName)
+				if ii < ji {
+					return true
+				}
+				return false
+			})
+
+			sort.Slice(tc.users, func(i, j int) bool {
+				ii, _ := strconv.Atoi(tc.users[i].FullName)
+				ji, _ := strconv.Atoi(tc.users[j].FullName)
+				if ii < ji {
+					return true
+				}
+				return false
+			})
+
+			if !reflect.DeepEqual(users, tc.users) {
+				t.Errorf("Members = %v, want %v", users, tc.users)
+			}
+		})
+	}
+}
+
+func TestChannelJoin(t *testing.T) {
+	cases := []struct {
+		name    string
+		chat    chat.Chat
+		nick    string
+		secret  string
+		want    chat.User
+		wantErr bool
+	}{
+		{
+			name: "test join chat",
+			chat: chat.Chat{
+				Secret: "",
+				Members: map[string]chat.User{
+					"123-fa6": chat.User{Nick: "foo"},
+				},
+			},
+			nick:    "foo",
+			secret:  "123-fa6",
+			want:    chat.User{Nick: "foo"},
+			wantErr: false,
+		},
+		{
+			name: "test join chat multiple users",
+			chat: chat.Chat{
+				Secret: "xxx",
+				Members: map[string]chat.User{
+					"453-fa6": chat.User{Nick: "foo"},
+					"137-fa6": chat.User{Nick: "bar"},
+					"123-fa6": chat.User{Nick: "baz"},
+				},
+			},
+			nick:    "baz",
+			secret:  "123-fa6",
+			want:    chat.User{Nick: "baz"},
+			wantErr: false,
+		},
+		{
+			name: "test invalid secret",
+			chat: chat.Chat{
+				Secret: "",
+				Members: map[string]chat.User{
+					"123-fa6": chat.User{Nick: "foo"},
+				},
+			},
+			nick:    "foo",
+			secret:  "123-fa6x",
+			want:    chat.User{Nick: "foo"},
+			wantErr: true,
+		},
+		{
+			name: "test secret nick missmatch",
+			chat: chat.Chat{
+				Secret: "",
+				Members: map[string]chat.User{
+					"123-fa6": chat.User{Nick: "bar"},
+				},
+			},
+			nick:    "foo",
+			secret:  "123-fa6",
+			want:    chat.User{Nick: "foo"},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			user, err := tc.chat.Join(tc.nick, tc.secret)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("err fail. want: %v, got: %v", tc.wantErr, err)
+			}
+
+			if !tc.wantErr {
+				if !reflect.DeepEqual(&tc.want, user) {
+					t.Errorf("user fail. want: %v, got: %v", tc.want, user)
+				}
+			}
+		})
+	}
+}

@@ -30,6 +30,19 @@ type Chat struct {
 // TODO
 // Private chats work the same - can only init private chat with people in the same channel
 
+// Register registers user with a chat and returns secret which should
+// be stored on the client side, and used for subsequent join requests
+func (c *Chat) Register(u *User) (string, error) {
+	for i := range c.Members {
+		if c.Members[i].Nick == u.Nick {
+			return "", fmt.Errorf("chat: this nick is already taken")
+		}
+	}
+	secret := newSecret()
+	c.Members[secret] = *u
+	return secret, nil
+}
+
 // Join attempts to join user to chat
 func (c *Chat) Join(nick, secret string) (*User, error) {
 	user, ok := c.Members[secret]
@@ -42,19 +55,6 @@ func (c *Chat) Join(nick, secret string) (*User, error) {
 	}
 
 	return &user, nil
-}
-
-// Register registeres user to a chat and returns secret
-// to be used for subsequent join request for channel
-func (c *Chat) Register(u *User) (string, error) {
-	for i := range c.Members {
-		if c.Members[i].Nick == u.Nick {
-			return "", fmt.Errorf("chat: this nick is already taken")
-		}
-	}
-	secret := newSecret()
-	c.Members[secret] = *u
-	return secret, nil
 }
 
 func newSecret() string {
