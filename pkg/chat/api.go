@@ -101,10 +101,11 @@ func (r *registerNickReq) Validate() error {
 	if match, err := regexp.Match("^[a-zA-Z0-9_]*$", []byte(r.Nick)); !match || err != nil {
 		return fmt.Errorf("nick must only contain alphanumeric and underscores")
 	}
-	if len(r.FullName) > 20 ||
-		len(r.Email) > 20 ||
-		len(r.ChannelSecret) > 20 {
+	if len(r.FullName) > 20 || len(r.Email) > 20 {
 		return fmt.Errorf("exceeded max field length of 20")
+	}
+	if len(r.ChannelSecret) > 64 {
+		return fmt.Errorf("exceeded max channel secret length of 64")
 	}
 	return nil
 }
@@ -150,8 +151,8 @@ func (r *channelMembersReq) Validate() error {
 	if len(r.Channel) > 10 {
 		return fmt.Errorf("channel name must not exceed 10 characters")
 	}
-	if len(r.ChannelSecret) > 20 {
-		return fmt.Errorf("channel_secret must not exceed 20 characters")
+	if len(r.ChannelSecret) > 64 {
+		return fmt.Errorf("channel_secret must not exceed 64 characters")
 	}
 	return nil
 }

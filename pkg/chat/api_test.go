@@ -373,7 +373,7 @@ func TestChannelMembers(t *testing.T) {
 		},
 		{
 			name:     "test req channel length validation",
-			req:      channelMembersReq{Channel: "foo", ChannelSecret: "aandasdfkjllndasdfkjll"},
+			req:      channelMembersReq{Channel: "foo", ChannelSecret: "aaandasdfkjllndasdfkjllaandasdfkjllndasdfkjllaandasdfkjllndasdfkjllaandasdfkj"},
 			wantErr:  true,
 			wantCode: http.StatusBadRequest,
 		},
