@@ -59,7 +59,7 @@ func TestCreateChannel(t *testing.T) {
 		},
 		{
 			name:     "test name length validation long",
-			req:      createChanReq{Name: "adkjfhdklsk"},
+			req:      createChanReq{Name: "qwertyuiopasdfghjklzxcvbnk"},
 			username: "admin",
 			password: "test",
 			wantErr:  true,
@@ -172,6 +172,7 @@ type registerNickReq struct {
 	Nick          string `json:"nick"`
 	FullName      string `json:"name"`
 	Email         string `json:"email"`
+	Secret        string `json:"secret"`
 	Channel       string `json:"channel"`
 	ChannelSecret string `json:"channel_secret"` // Tennant
 }
@@ -187,6 +188,7 @@ func TestRegisterNick(t *testing.T) {
 		req      registerNickReq
 		wantErr  bool
 		wantCode int
+		want     string
 	}{
 		{
 			name:     "test req channel validation",
@@ -208,7 +210,7 @@ func TestRegisterNick(t *testing.T) {
 		},
 		{
 			name:     "test nick long",
-			req:      registerNickReq{Nick: "joefokjdisl", Channel: "foo"},
+			req:      registerNickReq{Nick: "joefokjdislijflskdjfh", Channel: "foo"},
 			wantErr:  true,
 			wantCode: http.StatusBadRequest,
 		},
@@ -255,7 +257,7 @@ func TestRegisterNick(t *testing.T) {
 		{
 			store: &store{
 				GetFunc: func(id string) (*chat.Chat, error) {
-					return &chat.Chat{Secret: "", Members: map[string]chat.User{"xxx": {Nick: "joe"}}}, nil
+					return &chat.Chat{Secret: "", Members: map[string]chat.User{"joe": {Nick: "joe"}}}, nil
 				},
 			},
 			name:     "test nick exists",
@@ -288,8 +290,50 @@ func TestRegisterNick(t *testing.T) {
 				},
 				SaveFunc: func(ch *chat.Chat) error { return nil },
 			},
-			name:     "test save failed",
+			name:     "test saved",
 			req:      registerNickReq{Nick: "joe", Channel: "foo", ChannelSecret: "xxxyyy"},
+			wantErr:  false,
+			wantCode: http.StatusOK,
+		},
+		{
+			store: &store{
+				GetFunc: func(id string) (*chat.Chat, error) {
+					ch := chat.NewChannel("foo", false)
+					ch.Secret = "xxxyyy"
+					return ch, nil
+				},
+				SaveFunc: func(ch *chat.Chat) error { return nil },
+			},
+			name:     "test provided secret length",
+			req:      registerNickReq{Nick: "joe", Channel: "foo", Secret: "qwertyuiopasdfghjklmnbvcxzhdguui", ChannelSecret: "xxxyyy"},
+			wantErr:  true,
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			store: &store{
+				GetFunc: func(id string) (*chat.Chat, error) {
+					ch := chat.NewChannel("foo", false)
+					ch.Secret = "xxxyyy"
+					return ch, nil
+				},
+				SaveFunc: func(ch *chat.Chat) error { return nil },
+			},
+			name:     "test provided secret alphanumeric",
+			req:      registerNickReq{Nick: "joe", Channel: "foo", Secret: "asljfkd ' ';", ChannelSecret: "xxxyyy"},
+			wantErr:  true,
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			store: &store{
+				GetFunc: func(id string) (*chat.Chat, error) {
+					ch := chat.NewChannel("foo", false)
+					ch.Secret = "xxxyyy"
+					return ch, nil
+				},
+				SaveFunc: func(ch *chat.Chat) error { return nil },
+			},
+			name:     "test saved with provided secret",
+			req:      registerNickReq{Nick: "joe", Channel: "foo", Secret: "foobarbaz", ChannelSecret: "xxxyyy"},
 			wantErr:  false,
 			wantCode: http.StatusOK,
 		},
@@ -336,10 +380,14 @@ func TestRegisterNick(t *testing.T) {
 
 				var got registerNickResp
 				json.Unmarshal(resp.Data, &got)
+
+				if tc.req.Secret != "" && got.Secret != tc.req.Secret {
+					t.Errorf("custom secret not set")
+				}
+
 				if got.Secret == "" {
 					t.Errorf("unexpected response. want nonempty secret")
 				}
-
 			}
 		})
 	}
@@ -457,6 +505,8 @@ func TestChannelMembers(t *testing.T) {
 				if rw.Code != http.StatusOK {
 					return
 				}
+
+				// TODO - Sort slices
 
 				var got []chat.User
 				json.Unmarshal(resp.Data, &got)

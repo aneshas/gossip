@@ -17,10 +17,8 @@ services:
     restart: always 
     entrypoint:
       - /gossip
-      - -admin
-      - admin
-      - -password
-      - admin
+      - -admin=admin
+      - -password=admin
   nats_stream:
     image: nats-streaming
     restart: always 

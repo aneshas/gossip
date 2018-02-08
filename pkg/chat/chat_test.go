@@ -15,10 +15,11 @@ func TestChannelRegister(t *testing.T) {
 		channel string
 		private bool
 		users   []chat.User
+		secret  string
 		wantErr bool
 	}{
 		{
-			name:    "test join single user public chan",
+			name:    "test register single user public chan",
 			channel: "general",
 			private: false,
 			users: []chat.User{
@@ -31,7 +32,21 @@ func TestChannelRegister(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "test join single user private chan",
+			name:    "test register single user custom secret",
+			channel: "general",
+			private: false,
+			secret:  "xxx-yyy-zzz",
+			users: []chat.User{
+				{
+					Nick:     "foo",
+					FullName: "0",
+					Email:    "john@email.com",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "test register single user private chan",
 			channel: "general",
 			private: true,
 			users: []chat.User{
@@ -44,7 +59,7 @@ func TestChannelRegister(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "test join multiple users private chan",
+			name:    "test register multiple users private chan",
 			channel: "general",
 			private: true,
 			users: []chat.User{
@@ -67,7 +82,7 @@ func TestChannelRegister(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "test join multiple users nick exists err",
+			name:    "test register multiple users nick exists err",
 			channel: "general",
 			private: true,
 			users: []chat.User{
@@ -94,18 +109,21 @@ func TestChannelRegister(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			ch := chat.NewChannel("general", tc.private)
+			if tc.private && ch.Secret == "" {
+				t.Errorf("secret should not be empty for private channels")
+			}
 
 			var e error
 
 			for i := range tc.users {
-				secret, err := ch.Register(&tc.users[i])
+				secret, err := ch.Register(&tc.users[i], tc.secret)
 				if err != nil {
 					e = err
 					continue
 				}
 
-				if tc.private && secret == "" {
-					t.Errorf("secret should not be empty for private channels")
+				if tc.secret != "" && tc.secret != secret {
+					t.Errorf("custom secret not set")
 				}
 			}
 
@@ -163,7 +181,7 @@ func TestChannelJoin(t *testing.T) {
 			chat: chat.Chat{
 				Secret: "",
 				Members: map[string]chat.User{
-					"123-fa6": chat.User{Nick: "foo"},
+					"foo": chat.User{Nick: "foo", Secret: "123-fa6"},
 				},
 			},
 			nick:    "foo",
@@ -176,9 +194,9 @@ func TestChannelJoin(t *testing.T) {
 			chat: chat.Chat{
 				Secret: "xxx",
 				Members: map[string]chat.User{
-					"453-fa6": chat.User{Nick: "foo"},
-					"137-fa6": chat.User{Nick: "bar"},
-					"123-fa6": chat.User{Nick: "baz"},
+					"foo": chat.User{Nick: "foo", Secret: "453-fa6"},
+					"bar": chat.User{Nick: "bar", Secret: "137-fa6"},
+					"baz": chat.User{Nick: "baz", Secret: "123-fa6"},
 				},
 			},
 			nick:    "baz",
@@ -191,7 +209,7 @@ func TestChannelJoin(t *testing.T) {
 			chat: chat.Chat{
 				Secret: "",
 				Members: map[string]chat.User{
-					"123-fa6": chat.User{Nick: "foo"},
+					"foo": chat.User{Nick: "foo", Secret: "123-fa6"},
 				},
 			},
 			nick:    "foo",
@@ -204,7 +222,7 @@ func TestChannelJoin(t *testing.T) {
 			chat: chat.Chat{
 				Secret: "",
 				Members: map[string]chat.User{
-					"123-fa6": chat.User{Nick: "bar"},
+					"bar": chat.User{Nick: "bar", Secret: "xxxx"},
 				},
 			},
 			nick:    "foo",

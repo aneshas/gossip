@@ -60,10 +60,10 @@ func (cr *createChanReq) Validate() error {
 		return fmt.Errorf("name must not be empty")
 	}
 	if len(cr.Name) < 3 || len(cr.Name) > 10 {
-		return fmt.Errorf("name must be between 3 and 10 characters long")
+		return fmt.Errorf("name must be between 3 and 25 characters long")
 	}
 	if match, err := regexp.Match("^[a-zA-Z0-9_]*$", []byte(cr.Name)); !match || err != nil {
-		return fmt.Errorf("name must only contain alphanumeric and underscores")
+		return fmt.Errorf("name must contain only alphanumeric and underscores")
 	}
 	return nil
 }
@@ -80,6 +80,7 @@ type registerNickReq struct {
 	Nick          string `json:"nick"`
 	FullName      string `json:"name"`
 	Email         string `json:"email"`
+	Secret        string `json:"secret"`
 	Channel       string `json:"channel"`
 	ChannelSecret string `json:"channel_secret"` // Tennant
 }
@@ -95,17 +96,23 @@ func (r *registerNickReq) Validate() error {
 	if r.Channel == "" {
 		return fmt.Errorf("channel is required")
 	}
-	if len(r.Nick) < 3 || len(r.Nick) > 10 {
-		return fmt.Errorf("nick must be between 3 and 10 characters long")
+	if len(r.Nick) < 3 || len(r.Nick) > 20 {
+		return fmt.Errorf("nick must be between 3 and 20 characters long")
 	}
 	if match, err := regexp.Match("^[a-zA-Z0-9_]*$", []byte(r.Nick)); !match || err != nil {
-		return fmt.Errorf("nick must only contain alphanumeric and underscores")
+		return fmt.Errorf("nick must contain only alphanumeric and underscores")
 	}
 	if len(r.FullName) > 20 || len(r.Email) > 20 {
 		return fmt.Errorf("exceeded max field length of 20")
 	}
 	if len(r.ChannelSecret) > 64 {
 		return fmt.Errorf("exceeded max channel secret length of 64")
+	}
+	if r.Secret != "" && (len(r.Secret) < 5 || len(r.Secret) > 30) {
+		return fmt.Errorf("secret should be between 5 and 30 characters long")
+	}
+	if match, err := regexp.Match("^[a-zA-Z0-9_]*$", []byte(r.Secret)); r.Secret != "" && !match || err != nil {
+		return fmt.Errorf("secret must contain only alphanumeric and underscores")
 	}
 	return nil
 }
@@ -124,7 +131,7 @@ func (api *API) registerNick(c context.Context, w http.ResponseWriter, req *regi
 		Nick:     req.Nick,
 		FullName: req.FullName,
 		Email:    req.Email,
-	})
+	}, req.Secret)
 
 	if err != nil {
 		return nil, err

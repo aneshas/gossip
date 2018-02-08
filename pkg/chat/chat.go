@@ -32,29 +32,29 @@ type Chat struct {
 
 // Register registers user with a chat and returns secret which should
 // be stored on the client side, and used for subsequent join requests
-func (c *Chat) Register(u *User) (string, error) {
-	for i := range c.Members {
-		if c.Members[i].Nick == u.Nick {
-			return "", fmt.Errorf("chat: this nick is already taken")
-		}
+func (c *Chat) Register(u *User, secret string) (string, error) {
+	if _, ok := c.Members[u.Nick]; ok {
+		return "", fmt.Errorf("chat: this nick is already taken")
 	}
-	secret := newSecret()
-	c.Members[secret] = *u
-	return secret, nil
+	u.Secret = secret
+	if secret == "" {
+		u.Secret = newSecret()
+	}
+	c.Members[u.Nick] = *u
+	return u.Secret, nil
 }
 
 // Join attempts to join user to chat
 func (c *Chat) Join(nick, secret string) (*User, error) {
-	user, ok := c.Members[secret]
+	u, ok := c.Members[nick]
 	if !ok {
+		return nil, fmt.Errorf("chat: nick not registered")
+	}
+	if u.Secret != secret {
 		return nil, fmt.Errorf("chat: invalid secret")
 	}
-
-	if user.Nick != nick {
-		return nil, fmt.Errorf("chat: secret and nick do not match")
-	}
-
-	return &user, nil
+	u.Secret = ""
+	return &u, nil
 }
 
 func newSecret() string {
