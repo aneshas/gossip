@@ -174,6 +174,7 @@ func (api *API) channelMembers(c context.Context, w http.ResponseWriter, req *ch
 
 	if ch.Members != nil && len(ch.Members) > 0 {
 		for _, u := range ch.Members {
+			u.Secret = ""
 			members = append(members, u)
 		}
 	}
