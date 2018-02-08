@@ -59,7 +59,7 @@ func (cr *createChanReq) Validate() error {
 	if cr.Name == "" {
 		return fmt.Errorf("name must not be empty")
 	}
-	if len(cr.Name) < 3 || len(cr.Name) > 10 {
+	if len(cr.Name) < 3 || len(cr.Name) > 25 {
 		return fmt.Errorf("name must be between 3 and 25 characters long")
 	}
 	if match, err := regexp.Match("^[a-zA-Z0-9_]*$", []byte(cr.Name)); !match || err != nil {
