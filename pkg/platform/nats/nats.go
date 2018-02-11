@@ -6,7 +6,7 @@ import (
 	"github.com/nats-io/go-nats-streaming"
 )
 
-// TODO -
+// TODO - don't pass in conn
 func New(conn stan.Conn) *NATS {
 	return &NATS{
 		conn: conn,

@@ -215,6 +215,16 @@ func TestRegisterNick(t *testing.T) {
 			wantCode: http.StatusBadRequest,
 		},
 		{
+			name: "test nick long",
+			req: registerNickReq{
+				Nick:          "joe123",
+				Channel:       "foobar",
+				ChannelSecret: "1123456789012345678901234567890123456789012345678901234567890234567890",
+			},
+			wantErr:  true,
+			wantCode: http.StatusBadRequest,
+		},
+		{
 			name: "test fields too long",
 			req: registerNickReq{
 				Nick:          "joe",
@@ -415,7 +425,7 @@ func TestChannelMembers(t *testing.T) {
 		},
 		{
 			name:     "test req channel length validation",
-			req:      channelMembersReq{Channel: "andasdfkjll"},
+			req:      channelMembersReq{Channel: "aandasdfkjllandasdfkjllndasdfkjll"},
 			wantErr:  true,
 			wantCode: http.StatusBadRequest,
 		},

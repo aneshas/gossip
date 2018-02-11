@@ -10,6 +10,19 @@ import (
 	"github.com/tonto/kit/http/respond"
 )
 
+const (
+	defMaxLen = 20
+
+	minNickLen       = 3
+	maxNickLen       = 20
+	minNickSecretLen = 5
+	maxNickSecretLen = 30
+
+	minChanNameLen   = 3
+	maxChanNameLen   = 25
+	maxChanSecretLen = 64
+)
+
 // NewAPI creates new websocket api
 func NewAPI(store Store, admin, password string) *API {
 	api := API{
@@ -59,8 +72,8 @@ func (cr *createChanReq) Validate() error {
 	if cr.Name == "" {
 		return fmt.Errorf("name must not be empty")
 	}
-	if len(cr.Name) < 3 || len(cr.Name) > 25 {
-		return fmt.Errorf("name must be between 3 and 25 characters long")
+	if len(cr.Name) < minChanNameLen || len(cr.Name) > maxChanNameLen {
+		return fmt.Errorf("name must be between %d and %d characters long", minChanNameLen, maxChanNameLen)
 	}
 	if match, err := regexp.Match("^[a-zA-Z0-9_]*$", []byte(cr.Name)); !match || err != nil {
 		return fmt.Errorf("name must contain only alphanumeric and underscores")
@@ -96,20 +109,20 @@ func (r *registerNickReq) Validate() error {
 	if r.Channel == "" {
 		return fmt.Errorf("channel is required")
 	}
-	if len(r.Nick) < 3 || len(r.Nick) > 20 {
-		return fmt.Errorf("nick must be between 3 and 20 characters long")
+	if len(r.Nick) < minNickLen || len(r.Nick) > maxNickLen {
+		return fmt.Errorf("nick must be between %d and %d characters long", minNickLen, maxNickLen)
 	}
 	if match, err := regexp.Match("^[a-zA-Z0-9_]*$", []byte(r.Nick)); !match || err != nil {
 		return fmt.Errorf("nick must contain only alphanumeric and underscores")
 	}
-	if len(r.FullName) > 20 || len(r.Email) > 20 {
-		return fmt.Errorf("exceeded max field length of 20")
+	if len(r.FullName) > defMaxLen || len(r.Email) > defMaxLen {
+		return fmt.Errorf("exceeded max field length of %d", defMaxLen)
 	}
-	if len(r.ChannelSecret) > 64 {
-		return fmt.Errorf("exceeded max channel secret length of 64")
+	if len(r.ChannelSecret) > maxChanSecretLen {
+		return fmt.Errorf("exceeded max channel secret length of %d", maxChanSecretLen)
 	}
-	if r.Secret != "" && (len(r.Secret) < 5 || len(r.Secret) > 30) {
-		return fmt.Errorf("secret should be between 5 and 30 characters long")
+	if r.Secret != "" && (len(r.Secret) < minNickSecretLen || len(r.Secret) > maxNickSecretLen) {
+		return fmt.Errorf("secret should be between %d and %d characters long", minNickSecretLen, maxNickSecretLen)
 	}
 	if match, err := regexp.Match("^[a-zA-Z0-9_]*$", []byte(r.Secret)); r.Secret != "" && !match || err != nil {
 		return fmt.Errorf("secret must contain only alphanumeric and underscores")
@@ -155,11 +168,11 @@ func (r *channelMembersReq) Validate() error {
 	if r.Channel == "" {
 		return fmt.Errorf("channel is required")
 	}
-	if len(r.Channel) > 10 {
-		return fmt.Errorf("channel name must not exceed 10 characters")
+	if len(r.Channel) > maxChanNameLen {
+		return fmt.Errorf("channel name must not exceed %d characters", maxChanNameLen)
 	}
-	if len(r.ChannelSecret) > 64 {
-		return fmt.Errorf("channel_secret must not exceed 64 characters")
+	if len(r.ChannelSecret) > maxChanSecretLen {
+		return fmt.Errorf("channel_secret must not exceed %d characters", maxChanSecretLen)
 	}
 	return nil
 }
