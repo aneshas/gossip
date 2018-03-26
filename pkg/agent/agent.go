@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -26,18 +25,22 @@ func New(broker *broker.Broker, store ChatStore) *Agent {
 type Agent struct {
 	chat          *chat.Chat
 	connectedUser string
-	conn          *websocket.Conn
-	broker        *broker.Broker
-	store         ChatStore
 	done          chan struct{}
 	closeSub      func()
 	closed        bool
+
+	// TODO - Abstract ws connection and broker
+	conn   *websocket.Conn
+	broker *broker.Broker
+
+	store ChatStore
 }
 
 // ChatStore represents chat store interface
 type ChatStore interface {
 	Get(string) (*chat.Chat, error)
 	GetRecent(string, int64) ([]broker.Msg, uint64, error)
+	UpdateLastClientSeq(string, string, uint64)
 }
 
 type msgT int
@@ -51,7 +54,7 @@ const (
 )
 
 const (
-	maxHistoryCount uint64 = 3 // 150
+	maxHistoryCount uint64 = 150
 )
 
 type msg struct {
@@ -127,10 +130,13 @@ func (a *Agent) pushRecent() (uint64, error) {
 		return 0, nil
 	}
 
+	a.store.UpdateLastClientSeq(a.connectedUser, a.chat.Name, msgs[len(msgs)-1].Seq)
+
 	return seq, a.conn.WriteJSON(msg{
 		Type: historyMsg,
 		Data: msgs,
 	})
+
 }
 
 func (a *Agent) loop(mc chan *broker.Msg) {
@@ -161,6 +167,7 @@ func (a *Agent) loop(mc chan *broker.Msg) {
 					Data: m,
 				})
 
+				a.store.UpdateLastClientSeq(a.connectedUser, a.chat.Name, m.Seq)
 			case <-a.done:
 				return
 			}
@@ -214,6 +221,8 @@ func (a *Agent) handleChatMsg(raw json.RawMessage) {
 	if err != nil {
 		writeErr(a.conn, fmt.Sprintf("could not forward your message. try again: %v", err))
 	}
+
+	// TODO - Increment chan msg count here
 }
 
 func (a *Agent) handleHistoryReqMsg(raw json.RawMessage) {
@@ -237,7 +246,7 @@ func (a *Agent) handleHistoryReqMsg(raw json.RawMessage) {
 		return
 	}
 
-	log.Println("go history msgs: ", msgs)
+	// TODO - Save last msg here
 
 	a.conn.WriteJSON(msg{
 		Type: historyMsg,
@@ -248,7 +257,6 @@ func (a *Agent) handleHistoryReqMsg(raw json.RawMessage) {
 func (a *Agent) buildHistoryBatch(to uint64) ([]*broker.Msg, error) {
 	var offset uint64
 
-	// TODO - Are Seqs sequential per subject???
 	if to >= maxHistoryCount {
 		offset = to - maxHistoryCount
 	}

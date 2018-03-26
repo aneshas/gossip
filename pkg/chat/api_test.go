@@ -452,11 +452,17 @@ func TestChannelMembers(t *testing.T) {
 					return &chat.Chat{
 						Secret: "",
 						Members: map[string]chat.User{
-							"xxx": {
+							"joe": {
 								Nick: "joe",
 							},
-							"yyy": {
+							"foo": {
 								Nick: "foo",
+							},
+							"bar": {
+								Nick: "bar",
+							},
+							"baz": {
+								Nick: "baz",
 							},
 						},
 					}, nil
@@ -471,6 +477,12 @@ func TestChannelMembers(t *testing.T) {
 				},
 				{
 					Nick: "foo",
+				},
+				{
+					Nick: "bar",
+				},
+				{
+					Nick: "baz",
 				},
 			},
 			wantCode: http.StatusOK,
@@ -516,14 +528,20 @@ func TestChannelMembers(t *testing.T) {
 					return
 				}
 
-				// TODO - Sort slices
-
 				var got []chat.User
 				json.Unmarshal(resp.Data, &got)
-				if !reflect.DeepEqual(tc.want, got) {
-					t.Errorf("unexpected response. want: %v, got: %+v", tc.want, got)
-				}
 
+				for _, w := range tc.want {
+					found := false
+					for _, g := range got {
+						if w.Nick == g.Nick {
+							found = true
+						}
+					}
+					if !found {
+						t.Errorf("unexpected response. want: %v, got: %+v", tc.want, got)
+					}
+				}
 			}
 		})
 	}
@@ -629,6 +647,7 @@ type store struct {
 	ListChansFunc func() ([]string, error)
 }
 
-func (s *store) Save(c *chat.Chat) error           { return s.SaveFunc(c) }
-func (s *store) Get(id string) (*chat.Chat, error) { return s.GetFunc(id) }
-func (s *store) ListChannels() ([]string, error)   { return s.ListChansFunc() }
+func (s *store) Save(c *chat.Chat) error              { return s.SaveFunc(c) }
+func (s *store) Get(id string) (*chat.Chat, error)    { return s.GetFunc(id) }
+func (s *store) ListChannels() ([]string, error)      { return s.ListChansFunc() }
+func (s *store) GetUnreadCount(string, string) uint64 { panic("not implemented") }

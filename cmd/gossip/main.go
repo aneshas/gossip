@@ -33,8 +33,10 @@ func main() {
 	store, err := redis.NewStore(*redisHost)
 	checkErr(err)
 
-	nt, err := stan.Connect(*clusterID, *clientID, stan.NatsURL(*natsURL))
+	nconn, err := stan.Connect(*clusterID, *clientID, stan.NatsURL(*natsURL))
 	checkErr(err)
+
+	nt := nats.New(nconn)
 
 	logger := log.New(os.Stdout, "chat/ws => ", log.Ldate|log.Ltime|log.Lshortfile)
 
@@ -53,8 +55,9 @@ func main() {
 		agent.NewAPI(
 			broker.New(
 				nt,
+				store,
 				ingest.New(
-					nats.New(nt),
+					nt,
 					store,
 				),
 			),

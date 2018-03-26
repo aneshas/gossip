@@ -2,8 +2,6 @@ package chat_test
 
 import (
 	"reflect"
-	"sort"
-	"strconv"
 	"testing"
 
 	"github.com/tonto/gossip/pkg/chat"
@@ -142,26 +140,16 @@ func TestChannelRegister(t *testing.T) {
 				users = append(users, m)
 			}
 
-			sort.Slice(users, func(i, j int) bool {
-				ii, _ := strconv.Atoi(users[i].FullName)
-				ji, _ := strconv.Atoi(users[j].FullName)
-				if ii < ji {
-					return true
+			for _, w := range tc.users {
+				found := false
+				for _, g := range users {
+					if w.Nick == g.Nick {
+						found = true
+					}
 				}
-				return false
-			})
-
-			sort.Slice(tc.users, func(i, j int) bool {
-				ii, _ := strconv.Atoi(tc.users[i].FullName)
-				ji, _ := strconv.Atoi(tc.users[j].FullName)
-				if ii < ji {
-					return true
+				if !found {
+					t.Errorf("Members = %v, want %v", users, tc.users)
 				}
-				return false
-			})
-
-			if !reflect.DeepEqual(users, tc.users) {
-				t.Errorf("Members = %v, want %v", users, tc.users)
 			}
 		})
 	}

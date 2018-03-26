@@ -3,6 +3,7 @@ package redis
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/go-redis/redis"
@@ -11,13 +12,15 @@ import (
 )
 
 const (
-	maxHistorySize int64 = 10
+	maxHistorySize int64 = 1000
 )
 
 const (
-	chanListKey   = "channel.list"
-	historyPrefix = "history"
-	chatPrefix    = "chat"
+	chanListKey             = "channel.list"
+	historyPrefix           = "history"
+	chatPrefix              = "chat"
+	chatLastSeqPrefix       = "last_seq"
+	chatClientLastSeqPrefix = "client.last_seq"
 )
 
 func NewStore(host string) (*Store, error) {
@@ -100,7 +103,82 @@ func (s *Store) AppendMessage(id string, m *broker.Msg) error {
 		return err
 	}
 
+	s.updateChannelSeq(id, m.Seq)
+
 	return s.client.LTrim(key, -maxHistorySize, -1).Err()
+}
+
+func (s *Store) updateChannelSeq(id string, seq uint64) {
+	var currSeq int64
+
+	val, err := s.client.Get(chatLastSeqID(id)).Result()
+	if err != nil {
+		if err != redis.Nil {
+			return
+		}
+		val = "0"
+	}
+
+	currSeq, _ = strconv.ParseInt(val, 10, 64)
+
+	if uint64(currSeq) >= seq {
+		return
+	}
+
+	s.client.Set(chatLastSeqID(id), seq, 0)
+}
+
+func (s *Store) UpdateLastClientSeq(nick string, id string, seq uint64) {
+	var currSeq int64
+
+	val, err := s.client.Get(chatClientLastSeqID(nick, id)).Result()
+	if err != nil {
+		if err != redis.Nil {
+			return
+		}
+		val = "0"
+	}
+
+	currSeq, _ = strconv.ParseInt(val, 10, 64)
+
+	if uint64(currSeq) >= seq {
+		return
+	}
+
+	s.client.Set(chatClientLastSeqID(nick, id), seq, 0)
+}
+
+func (s *Store) GetUnreadCount(nick string, id string) uint64 {
+	val, err := s.client.Get(chatClientLastSeqID(nick, id)).Result()
+	if err != nil {
+		if err != redis.Nil {
+			return 0
+		}
+		val = "0"
+	}
+
+	useq, err := strconv.ParseInt(val, 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	val, err = s.client.Get(chatLastSeqID(id)).Result()
+	if err != nil {
+		return 0
+	}
+
+	cseq, err := strconv.ParseInt(val, 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	delta := cseq - useq
+
+	if delta <= 0 {
+		return 0
+	}
+
+	return uint64(delta)
 }
 
 func (s *Store) Save(ct *chat.Chat) error {
@@ -142,4 +220,12 @@ func chatID(id string) string {
 
 func chatHistoryID(id string) string {
 	return fmt.Sprintf("%s.%s.%s", historyPrefix, chatPrefix, id)
+}
+
+func chatLastSeqID(id string) string {
+	return fmt.Sprintf("%s.%s.%s", chatLastSeqPrefix, chatPrefix, id)
+}
+
+func chatClientLastSeqID(nick, id string) string {
+	return fmt.Sprintf("%s.%s.%s", chatClientLastSeqID, nick, id)
 }

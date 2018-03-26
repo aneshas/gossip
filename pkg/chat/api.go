@@ -36,6 +36,13 @@ func NewAPI(store Store, admin, password string) *API {
 		WithHTTPBasicAuth(admin, password),
 	)
 
+	api.RegisterEndpoint(
+		"POST",
+		"/admin/unread_count",
+		api.unreadCount,
+		WithHTTPBasicAuth(admin, password),
+	)
+
 	api.RegisterHandler("GET", "/list_channels", api.listChannels)
 	api.RegisterEndpoint("POST", "/register_nick", api.registerNick)
 	api.RegisterEndpoint("POST", "/channel_members", api.channelMembers)
@@ -54,6 +61,7 @@ type Store interface {
 	Save(*Chat) error
 	Get(string) (*Chat, error)
 	ListChannels() ([]string, error)
+	GetUnreadCount(string, string) uint64
 }
 
 // Prefix returns api prefix for this service
@@ -157,6 +165,31 @@ func (api *API) registerNick(c context.Context, w http.ResponseWriter, req *regi
 	}
 
 	return h.NewResponse(registerNickResp{Secret: secret}, http.StatusOK), nil
+}
+
+type unreadCountReq struct {
+	Channel string `json:"channel"`
+	Nick    string `json:"nick"`
+}
+
+func (r *unreadCountReq) Validate() error {
+	if r.Nick == "" {
+		return fmt.Errorf("nick is required")
+	}
+	if len(r.Nick) < minNickLen || len(r.Nick) > maxNickLen {
+		return fmt.Errorf("nick must be between %d and %d characters long", minNickLen, maxNickLen)
+	}
+	if r.Channel == "" {
+		return fmt.Errorf("channel is required")
+	}
+	if len(r.Channel) > maxChanNameLen {
+		return fmt.Errorf("channel name must not exceed %d characters", maxChanNameLen)
+	}
+	return nil
+}
+
+func (api *API) unreadCount(c context.Context, w http.ResponseWriter, req *unreadCountReq) (*h.Response, error) {
+	return h.NewResponse(api.store.GetUnreadCount(req.Nick, req.Channel), http.StatusOK), nil
 }
 
 type channelMembersReq struct {
