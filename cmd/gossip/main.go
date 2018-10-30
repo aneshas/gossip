@@ -43,7 +43,7 @@ func main() {
 	srv := http.NewServer(
 		http.WithLogger(logger),
 		http.WithAdapters(
-			adapter.WithRequestLogger(logger),
+			adapter.WithRequestLogger(logger, true),
 			adapter.WithCORS(
 				adapter.WithCORSAllowOrigins("*"),
 				adapter.WithCORSAllowHeaders("Authorization", "Accept", "Accept-Language", "Content-Language", "Content-Type"),

@@ -70,7 +70,7 @@ type initConReq struct {
 }
 
 func (ir *initConReq) Validate() error {
-	// TODO - Validate lengthe alphanumeric etc...
+	// TODO - Validate length alphanumeric etc...
 	if ir.Channel == "" || ir.Nick == "" {
 		return fmt.Errorf("join fail: channel_id, nick and secret are required")
 	}

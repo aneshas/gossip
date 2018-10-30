@@ -20,8 +20,7 @@ func New(broker *broker.Broker, store ChatStore) *Agent {
 	}
 }
 
-// Agent represents chat connection agent which handles
-// end to end comm client - broker
+// Agent represents chat connection agent which handles end to end comm client - broker
 type Agent struct {
 	chat          *chat.Chat
 	connectedUser string

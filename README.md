@@ -10,3 +10,5 @@ To run gossip locally, you need to have `docker`, `docker-compose` and `go` inst
 - Change to `~/go/src/github.com/tonto/gossip`
 - Run `./up` script which will compile the binary and run `docker-compose up` with gossip, nats-streaming and redis
 - If everything went fine, you should now have gossip running on `localhost` (port 80)
+
+
